@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Music, Disc, User, Clock, Award } from 'lucide-react';
+import { Search, Music, Disc, User, Clock, Award, BarChart2, Calendar, Headphones, Activity, Heart, Globe, Music2, Bookmark, PieChart } from 'lucide-react';
 
 // Spotify API constants
 const SPOTIFY_CLIENT_ID = 'ec65a3e0c919492c863a40dc1fb23c8e'; // Replace with your actual client ID
-const REDIRECT_URI = 'http://localhost:3000/callback'; // Adjust to your app's redirect URI
+const REDIRECT_URI = window.location.origin + '/';
 const AUTH_ENDPOINT = 'https://accounts.spotify.com/authorize';
 const RESPONSE_TYPE = 'token';
-const SCOPES = 'user-read-private user-read-email';
+const SCOPES = 'user-read-private user-read-email user-top-read';
 
 // Helper function to get token from URL on callback
+
+
 const getTokenFromUrl = () => {
   const hash = window.location.hash;
   if (!hash) return null;
@@ -32,6 +34,8 @@ const SpotifyApp = () => {
   const [selectedArtist, setSelectedArtist] = useState(null);
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [userStats, setUserStats] = useState(null);
 
   // Check for token on component mount
   useEffect(() => {
@@ -55,6 +59,99 @@ const SpotifyApp = () => {
     }
   }, []);
 
+  // Fetch user profile and stats when token is available
+  useEffect(() => {
+    if (token) {
+      // Fetch user profile data
+      fetchUserProfile();
+      
+      // Fetch user stats
+      fetchUserStats();
+    }
+  }, [token]);
+
+  // Fetch user profile data from Spotify API
+  const fetchUserProfile = async () => {
+    try {
+      const response = await fetch('https://api.spotify.com/v1/me', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          logout();
+          throw new Error('Session expired. Please login again.');
+        }
+        throw new Error('Failed to fetch user profile');
+      }
+      
+      const data = await response.json();
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  // Fetch user stats from Spotify API
+  const fetchUserStats = async () => {
+    try {
+      // Fetch user's top artists
+      const topArtistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=5&time_range=medium_term', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!topArtistsResponse.ok) {
+        throw new Error('Failed to fetch top artists');
+      }
+      
+      const topArtistsData = await topArtistsResponse.json();
+      
+      // Fetch user's top tracks
+      const topTracksResponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=5&time_range=medium_term', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!topTracksResponse.ok) {
+        throw new Error('Failed to fetch top tracks');
+      }
+      
+      const topTracksData = await topTracksResponse.json();
+      
+      // Construct user stats object
+      const stats = {
+        topArtists: topArtistsData.items,
+        topTracks: topTracksData.items,
+        favoriteGenres: extractTopGenres(topArtistsData.items),
+      };
+      
+      setUserStats(stats);
+    } catch (error) {
+      console.error('Error fetching user stats:', error);
+    }
+  };
+
+  // Helper function to extract top genres from top artists
+  const extractTopGenres = (artists) => {
+    const genreCounts = {};
+    
+    artists.forEach(artist => {
+      artist.genres.forEach(genre => {
+        genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+      });
+    });
+    
+    return Object.entries(genreCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(entry => entry[0]);
+  };
+
   // Function to initiate Spotify login
   const login = () => {
     window.location.href = `${AUTH_ENDPOINT}?client_id=${SPOTIFY_CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=${RESPONSE_TYPE}&scope=${encodeURIComponent(SCOPES)}`;
@@ -66,6 +163,8 @@ const SpotifyApp = () => {
     localStorage.removeItem('spotify_token_expiry');
     setToken(null);
     setSelectedArtist(null);
+    setUserProfile(null);
+    setUserStats(null);
   };
 
   // Fetch artist data from Spotify API
@@ -205,7 +304,10 @@ const SpotifyApp = () => {
       {/* Header */}
       <header className="sticky top-0 bg-black/80 backdrop-blur-md z-10 p-4 border-b border-gray-800/50 shadow-lg">
         <div className="flex items-center justify-between">
-          <div className="flex items-center">
+          <div
+            className="flex items-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
+            onClick={() => setSelectedArtist(null)}
+          >
             <Music className="w-8 h-8 text-green-500 mr-2 animate-pulse" />
             <h1 className="text-xl font-bold">Spotify Artist Lookup</h1>
           </div>
@@ -229,7 +331,7 @@ const SpotifyApp = () => {
                   </div>
                 )}
                 {searchResults.length > 0 && (
-                  <div className="absolute mt-1 w-full bg-gray-900/90 backdrop-blur-md rounded-md shadow-lg shadow-green-900/10 z-50 overflow-hidden border border-gray-800/50">
+                  <div className="absolute mt-1 w-full bg-gray-900/90 backdrop-blur-md rounded-md shadow-lg shadow-green-900/10 z-[9999] overflow-hidden border border-gray-800/50">
                     <ul>
                       {searchResults.map(artist => (
                         <li
@@ -524,10 +626,182 @@ const SpotifyApp = () => {
             </div>
           </div>
         ) : (
-          <div className="max-w-2xl mx-auto text-center py-16">
-            <Music className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold mb-2">Search for your favorite artists</h2>
-            <p className="text-gray-400 mb-8">Enter an artist name in the search bar above to see their details</p>
+          <div className="max-w-4xl mx-auto py-8">
+            {/* User Profile Section */}
+            {userProfile && (
+              <div className="mb-10 p-6 bg-gradient-to-r from-gray-900/70 to-gray-800/50 rounded-xl shadow-xl border border-gray-800/30 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-r from-green-900/10 to-purple-900/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                
+                <div className="flex flex-col md:flex-row items-center">
+                  {/* Profile Picture */}
+                  <div className="relative mb-4 md:mb-0 md:mr-6">
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-gray-800/50 shadow-inner group-hover:border-green-500/30 transition-all duration-500">
+                      {userProfile.images && userProfile.images.length > 0 ? (
+                        <img
+                          src={userProfile.images[0].url}
+                          alt={userProfile.display_name}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                          <User className="w-12 h-12 text-gray-300" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="absolute bottom-0 right-0 bg-green-500 rounded-full w-4 h-4 border-2 border-gray-900"></div>
+                  </div>
+                  
+                  {/* User Info */}
+                  <div className="text-center md:text-left flex-grow">
+                    <div className="flex flex-col md:flex-row items-center md:items-start">
+                      <div>
+                        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-300 mb-1">
+                          {userProfile.display_name}
+                        </h2>
+                        <p className="text-green-400 text-sm">{userProfile.email}</p>
+                      </div>
+                      
+                      <div className="ml-0 md:ml-auto mt-4 md:mt-0 flex space-x-4">
+                        {userProfile.country && (
+                          <div className="flex items-center bg-gray-800/80 px-3 py-1 rounded-full text-sm text-gray-300 shadow-inner">
+                            <Globe className="w-4 h-4 mr-2 text-green-400" />
+                            {userProfile.country}
+                          </div>
+                        )}
+                        {userProfile.product && (
+                          <div className="flex items-center bg-gray-800/80 px-3 py-1 rounded-full text-sm text-gray-300 shadow-inner capitalize">
+                            <Award className="w-4 h-4 mr-2 text-green-400" />
+                            {userProfile.product}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 text-gray-400 text-sm">
+                      <span className="bg-black/30 rounded-full px-3 py-1">Spotify ID: {userProfile.id}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* User Stats Dashboard */}
+            {userStats && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                {/* Top Artists */}
+                <div className="bg-gray-900/70 rounded-xl shadow-lg border border-gray-800/30 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-800/50 flex items-center">
+                    <Music2 className="w-5 h-5 mr-2 text-green-500" />
+                    <h3 className="text-xl font-bold">Your Top Artists</h3>
+                  </div>
+                  <ul>
+                    {userStats.topArtists.map((artist, index) => (
+                      <li key={artist.id} className="px-5 py-3 border-b last:border-b-0 border-gray-800/30 flex items-center hover:bg-gray-800/50 transition-colors duration-300">
+                        <span className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-800 text-green-400 text-sm mr-3">
+                          {index + 1}
+                        </span>
+                        <div className="w-10 h-10 rounded-full overflow-hidden mr-3">
+                          {artist.images && artist.images.length > 0 ? (
+                            <img
+                              src={artist.images[artist.images.length - 1].url}
+                              alt={artist.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                              <User className="w-5 h-5 text-gray-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-grow">
+                          <p className="font-medium">{artist.name}</p>
+                          <p className="text-xs text-gray-400">{artist.genres.slice(0, 2).join(', ')}</p>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="h-1.5 w-12 bg-gray-800 rounded-full mr-2 overflow-hidden">
+                            <div
+                              className="h-full bg-green-500"
+                              style={{ width: `${artist.popularity}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-gray-400">{artist.popularity}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                
+                {/* Top Tracks */}
+                <div className="bg-gray-900/70 rounded-xl shadow-lg border border-gray-800/30 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-800/50 flex items-center">
+                    <Headphones className="w-5 h-5 mr-2 text-green-500" />
+                    <h3 className="text-xl font-bold">Your Top Tracks</h3>
+                  </div>
+                  <ul>
+                    {userStats.topTracks.map((track, index) => (
+                      <li key={track.id} className="px-5 py-3 border-b last:border-b-0 border-gray-800/30 flex items-center hover:bg-gray-800/50 transition-colors duration-300">
+                        <span className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-800 text-green-400 text-sm mr-3">
+                          {index + 1}
+                        </span>
+                        <div className="w-10 h-10 rounded overflow-hidden mr-3">
+                          {track.album.images && track.album.images.length > 0 ? (
+                            <img
+                              src={track.album.images[track.album.images.length - 1].url}
+                              alt={track.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                              <Music className="w-5 h-5 text-gray-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-grow">
+                          <p className="font-medium truncate">{track.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{track.artists.map(a => a.name).join(', ')}</p>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {formatDuration(track.duration_ms)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                
+                {/* Favorite Genres */}
+                <div className="bg-gray-900/70 rounded-xl shadow-lg border border-gray-800/30 p-5 md:col-span-2">
+                  <div className="flex items-center mb-4">
+                    <PieChart className="w-5 h-5 mr-2 text-green-500" />
+                    <h3 className="text-xl font-bold">Your Music Taste</h3>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {userStats.favoriteGenres.map((genre, index) => (
+                      <span
+                        key={index}
+                        className="bg-gradient-to-r from-green-900/40 to-green-800/30 rounded-full px-4 py-1.5 text-sm shadow-md border border-green-900/30"
+                      >
+                        {genre}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Search Prompt */}
+            <div className="bg-gradient-to-r from-gray-900/70 via-gray-800/50 to-gray-900/70 rounded-xl p-8 text-center shadow-xl border border-gray-800/30 hover:shadow-green-900/10 transition-all duration-500 group">
+              <div className="relative w-20 h-20 mx-auto mb-6">
+                <div className="absolute inset-0 bg-green-500 rounded-full opacity-10 animate-pulse"></div>
+                <Search className="w-20 h-20 text-green-500 mx-auto relative z-10 group-hover:scale-110 transition-transform duration-500" />
+              </div>
+              <h2 className="text-3xl font-bold mb-3 text-transparent bg-clip-text bg-gradient-to-r from-white to-green-400 group-hover:to-green-300 transition-colors duration-300">
+                Search for your favorite artists
+              </h2>
+              <p className="text-gray-400 max-w-2xl mx-auto text-lg group-hover:text-gray-300 transition-colors duration-300">
+                Enter an artist name in the search bar above to explore their top tracks, albums, and more
+              </p>
+            </div>
           </div>
         )}
       </main>
