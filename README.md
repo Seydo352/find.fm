@@ -1,4 +1,4 @@
-# Spotify Artist Lookup
+# find.fm
 
 A modern React application that allows users to search and explore Spotify artists. Built with React, Tailwind CSS, and the Spotify API.
 
